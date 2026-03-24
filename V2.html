@@ -1,0 +1,1875 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Générateur PDF — Mode Mosaïque / Triptyque + Cameo + DXF Fixe</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+:root{
+  --bg:#1e1e1e;
+  --panel:#2c2c2c;
+  --card:#333;
+  --text:#eee;
+  --muted:#aaa;
+  --accent:#007bff;
+  --success:#28a745;
+  --warning:#ffc107;
+}
+body{font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial;margin:0;background:var(--bg);color:var(--text);} 
+.app{display:grid;grid-template-columns:1fr 420px;gap:16px;padding:16px;height:100vh;box-sizing:border-box;}
+.preview-panel{background:var(--card);border-radius:10px;padding:12px;box-shadow:0 6px 20px rgba(0,0,0,0.06);display:flex;flex-direction:column;min-height:0;overflow:hidden;}
+.preview-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px;}
+#pagePreviewWrap{flex:1;display:flex;align-items:center;justify-content:center;padding:8px;overflow:auto;}
+.page{background:#fff;border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,0.4);position:relative;display:grid;align-content:start;}
+.page .slot{box-sizing:border-box; border:1px dashed rgba(0,0,0,0.06); background:#f8f8f8; display:flex;align-items:center;justify-content:center; position:relative; overflow:hidden;user-select:none; cursor:pointer;} /* Added cursor:pointer */
+.slot img{width:100%;height:100%;object-fit:cover;display:block;}
+.plusTile{display:flex;flex-direction:column;align-items:center;justify-content:center;color:#666;font-weight:700;border-radius:4px;background:linear-gradient(180deg,#fff,#f0f0f0);width:90%;height:90%;}
+.plusTile span{font-size:28px;line-height:1;}
+.thumbRemove{position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.6);color:#fff;padding:4px 7px;border-radius:6px;cursor:pointer;font-size:13px;}
+.thumbIndex{position:absolute;left:8px;bottom:8px;background:rgba(0,0,0,0.6);color:#fff;padding:4px 7px;border-radius:6px;font-size:13px;}
+.thumbMove{position:absolute;left:10px;top:10px;width:58px;height:58px;background:rgba(0,0,0,0.55);color:#fff;padding:8px;border-radius:10px;cursor:grab;display:flex;align-items:center;justify-content:center;gap:6px;box-shadow:0 8px 22px rgba(0,0,0,0.45);transition:transform .12s ease, background .12s ease;z-index:9;}
+.thumbMove svg{width:34px;height:34px;display:block;opacity:0.98;}
+.thumbMove:hover{transform:translateY(-2px);background:rgba(0,0,0,0.72);}
+.thumbMove .label{position:absolute;top:calc(100% + 6px);left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:#fff;padding:6px 8px;border-radius:6px;font-size:12px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .08s ease, transform .12s ease;}
+.thumbMove:hover .label{opacity:1;transform:translateX(-50%) translateY(0);}
+
+@media(max-width:600px){.thumbMove{ width:48px; height:48px; padding:6px; border-radius:8px; } .thumbMove svg{ width:30px; height:30px; }}
+
+.menu{background:var(--panel);border-radius:10px;padding:14px;box-shadow:0 6px 20px rgba(0,0,0,0.04);height:100%;position:sticky;top:16px;overflow:auto;display:flex;flex-direction:column;}
+label{display:block;margin-top:10px;font-weight:600;font-size:13px;}
+input[type="file"],input[type="number"],select,button,input[type="color"],input[type="text"]{width:100%;padding:8px;margin-top:6px;border-radius:6px;border:1px solid #555;box-sizing:border-box;background:#1e1e1e;color:#eee;}
+input[type="color"]{padding:6px;height:38px;}
+.small{font-size:12px;color:var(--muted);}
+.button-row{display:flex;gap:8px;margin-top:8px;}
+.button-row > *{flex:1;}
+.button-ghost{background:transparent;border:1px solid #555;color:#eee;border-radius:6px;padding:8px;cursor:pointer;}
+.button-primary{background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;padding:8px;}
+.button-success{background:var(--success);color:#fff;border:none;border-radius:6px;cursor:pointer;padding:8px;}
+.button-warning{background:transparent; border:1px solid var(--warning); color:var(--warning); border-radius:6px; cursor:pointer; padding:8px;}
+.context-menu{position:fixed;background:#111;border:1px solid #333;padding:10px;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,0.6);display:none;z-index:9999;min-width:220px;color:#eee;}
+.context-menu .ctx-title{font-weight:700;margin-bottom:6px;font-size:13px;}
+.context-menu .ctx-hint{font-size:12px;color:#cfcfcf;margin-bottom:8px;line-height:1.2;}
+.context-menu .ctx-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:6px;}
+.context-menu button{background:transparent;border:1px solid #444;color:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;}
+.context-menu button.primary{background:var(--accent);border:none;color:#fff;}
+.context-menu button:hover{opacity:0.95;}
+.context-menu .kbd{display:inline-block;padding:2px 6px;border-radius:4px;background:#222;border:1px solid #333;margin-left:6px;font-weight:700;font-size:11px;}
+.footer-actions{display:flex;gap:8px;margin-top:12px;align-items:center;}
+.progress-wrap{margin-top:12px;display:none;}
+.progress-bar-bg{background:#333;border-radius:6px;height:10px;margin-top:6px;overflow:hidden;}
+.progress-bar-fill{height:100%;width:0%;background:var(--accent);transition:width .18s linear;}
+.estimate{font-size:13px;color:#dcdcdc;margin-left:6px;}
+.checkbox-wrap{display:flex;align-items:center;gap:10px;margin-top:12px;padding:4px 0;}
+.checkbox-wrap input[type="checkbox"]{width:auto;margin:0;cursor:pointer;transform:scale(1.2);}
+.checkbox-wrap label{margin:0;cursor:pointer;}
+
+/* Style spécifique au splitter */
+.splitter-box { background:#222; border:1px solid #444; border-radius:8px; padding:10px; margin-bottom:16px; }
+.splitter-box h3 { margin:0 0 8px 0; font-size:14px; color:#fff; display:flex; align-items:center; gap:6px; }
+.split-grid-inputs { display:flex; gap:8px; }
+.split-grid-inputs > div { flex:1; }
+@media(max-width:980px){.app{grid-template-columns:1fr;}.menu{position:relative;height:auto;}}
+</style>
+</head>
+<body>
+<div class="app">
+  <main class="preview-panel" role="main" aria-label="Aperçu interactif">
+    <div class="preview-head">
+      <h2 style="margin:0;font-size:16px;">Aperçu — grille</h2>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <div id="status" class="small">Aucun fichier</div>
+      </div>
+    </div>
+
+    <div id="pagePreviewWrap">
+      <div id="pagePreview" class="page" aria-label="Aperçu page"></div>
+    </div>
+  </main>
+
+  <aside class="menu" role="complementary">
+    
+    <div class="splitter-box">
+      <h3>✂️ Découper une image (Puzzle)</h3>
+      <div class="small" style="margin-bottom:8px;">Transforme une image en plusieurs cartes.</div>
+      
+      <div class="split-grid-inputs">
+        <div>
+          <label style="margin-top:0;font-size:11px;">Colonnes (H)</label>
+          <input id="splitCols" type="number" value="3" min="1" max="5">
+        </div>
+        <div>
+          <label style="margin-top:0;font-size:11px;">Lignes (V)</label>
+          <input id="splitRows" type="number" value="1" min="1" max="5">
+        </div>
+      </div>
+      
+      <button id="btnSplitUpload" class="button-success" style="margin-top:8px; width:100%;">Choisir l'image à découper</button>
+      <input id="splitFilePicker" type="file" accept="image/*" style="display:none">
+    </div>
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <div><strong>Paramètres standard</strong></div>
+      <div style="font-size:12px;color:#666">A4 uniquement</div>
+    </div>
+
+    <label>Ajouter cartes simples (sans découpe)</label>
+    <button id="btnAddSingle" class="button-ghost" style="margin-top:4px;">+ Ajouter des fichiers</button>
+    
+    <div class="button-row" style="margin-top:8px;">
+      <button id="clearAllBtn" class="button-ghost">Effacer tout</button>
+    </div>
+
+    <hr style="border:none;border-top:1px solid #444;margin:12px 0;">
+
+    <label>Format page (Affichage écran & PDF)</label>
+    <select id="pageSize" aria-label="Format de la page">
+      <option value="a4-portrait">A4 — Portrait (3×3)</option>
+      <option value="a4-landscape" selected>A4 — Paysage (2×4)</option>
+    </select>
+
+    <label>Fond perdu (mm)</label>
+    <input id="bleedSize" type="number" value="1" min="0" max="20" step="0.5" />
+
+    <label>Résolution (DPI)</label>
+    <select id="dpiSelect" aria-label="DPI">
+      <option value="300">300</option>
+      <option value="600" selected>600</option>
+      <option value="max">Max (sans upscaling)</option>
+    </select>
+
+    <div class="checkbox-wrap">
+      <input id="showCutMarks" type="checkbox" checked>
+      <label for="showCutMarks">Afficher les repères de coupe (PDF)</label>
+    </div>
+
+    <div class="checkbox-wrap">
+      <input id="showCameoMarks" type="checkbox">
+      <label for="showCameoMarks">Ajouter repères Silhouette Cameo 5</label>
+    </div>
+
+    <label>Couleur croix pointillées</label>
+    <input id="crossColor" type="color" value="#000000" title="Couleur des croix pointillées (PDF)">
+    
+    <label>Nom du fichier de sortie</label>
+    <input id="outputFileName" type="text" value="cartes_puzzle" placeholder="Nom du fichier..." title="Nom du fichier PDF (sans l'extension .pdf)">
+
+    <div class="footer-actions" style="margin-top:12px;">
+      <button id="downloadBtn" class="button-primary" style="flex:1;" disabled>Télécharger le PDF</button>
+      <div id="estimateText" class="estimate">—</div>
+    </div>
+    <div class="button-row" style="margin-top:8px;">
+        <button id="downloadDxfBtn" class="button-warning" disabled>⬇ Gabarit découpe (.dxf)</button>
+    </div>
+    <div class="small" style="color:#888; margin-top:4px; font-style:italic;">Gabarit officiel 4x2 (coins arrondis)</div>
+
+    <div id="progressWrap" class="progress-wrap" aria-hidden="true" style="display:none;">
+      <div id="progressText" class="small">0 / 0 images — DPI: --</div>
+      <div class="progress-bar-bg"><div id="progressBar" class="progress-bar-fill" style="width:0%"></div></div>
+    </div>
+
+  </aside>
+</div>
+
+<input id="filePicker" type="file" accept="image/*" multiple style="display:none">
+
+<div id="contextMenu" class="context-menu" role="menu" aria-hidden="true">
+  <div class="ctx-title">Raccourcis & actions</div>
+  <div class="ctx-hint">
+    <div>Clic gauche sur la vignette → <strong>Dupliquer</strong>.</div>
+    <div>Alt + clic sur la vignette → <strong>Supprimer</strong>.</div>
+  </div>
+  <div style="font-size:12px;color:#bbb;">Actions rapides :</div>
+  <div class="ctx-actions">
+    <button id="ctxDuplicate">Dupliquer</button>
+    <button id="ctxDelete" class="primary">Supprimer</button>
+  </div>
+</div>
+
+<script>
+const jsPDF = (function(){
+  if(window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
+  if(window.jsPDF) return window.jsPDF;
+  console.error('jsPDF non trouvé : vérifie que la librairie jspdf est chargée.');
+  return null;
+})();
+
+/* ======== Constants & state ======== */
+const CARD_W_MM = 63, CARD_H_MM = 88;
+const MAX_SLOTS = 9;
+
+const pagePreview = document.getElementById('pagePreview');
+const pagePreviewWrap = document.getElementById('pagePreviewWrap');
+
+const filePicker = document.getElementById('filePicker');
+const btnAddSingle = document.getElementById('btnAddSingle');
+
+// SPLITTER ELEMENTS
+const btnSplitUpload = document.getElementById('btnSplitUpload');
+const splitFilePicker = document.getElementById('splitFilePicker');
+const splitColsInput = document.getElementById('splitCols');
+const splitRowsInput = document.getElementById('splitRows');
+
+const downloadBtn = document.getElementById('downloadBtn');
+const downloadDxfBtn = document.getElementById('downloadDxfBtn');
+const statusEl = document.getElementById('status');
+const bleedInput = document.getElementById('bleedSize');
+const pageSizeSel = document.getElementById('pageSize');
+const dpiSelect = document.getElementById('dpiSelect');
+const clearAllBtn = document.getElementById('clearAllBtn');
+const crossColorInput = document.getElementById('crossColor');
+const showCutMarksInput = document.getElementById('showCutMarks');
+const showCameoMarksInput = document.getElementById('showCameoMarks');
+const estimateText = document.getElementById('estimateText');
+const fileNameInput = document.getElementById('outputFileName');
+
+const contextMenu = document.getElementById('contextMenu');
+const ctxDupBtn = document.getElementById('ctxDuplicate');
+const ctxDelBtn = document.getElementById('ctxDelete');
+
+const progressWrap = document.getElementById('progressWrap');
+const progressText = document.getElementById('progressText');
+const progressBar = document.getElementById('progressBar');
+
+let uploadedFiles = [];
+let slots = new Array(MAX_SLOTS).fill(null);
+let contextTargetSlot = null;
+let crossColorHex = crossColorInput.value || '#000000';
+
+/* ======== STATIC DXF TEMPLATE ======== */
+// Ce contenu est la copie exacte du fichier gabarit_cartes.dxf fourni
+const STATIC_DXF_CONTENT = `0
+SECTION
+2
+ENTITIES
+0
+LINE
+8
+TRIM
+10
+21.5000
+20
+16.0000
+11
+80.5000
+21
+16.0000
+0
+ARC
+8
+TRIM
+10
+80.5000
+20
+18.0000
+40
+2.0000
+50
+270.0000
+51
+360.0000
+0
+LINE
+8
+TRIM
+10
+82.5000
+20
+18.0000
+11
+82.5000
+21
+102.0000
+0
+ARC
+8
+TRIM
+10
+80.5000
+20
+102.0000
+40
+2.0000
+50
+0.0000
+51
+90.0000
+0
+LINE
+8
+TRIM
+10
+80.5000
+20
+104.0000
+11
+21.5000
+21
+104.0000
+0
+ARC
+8
+TRIM
+10
+21.5000
+20
+102.0000
+40
+2.0000
+50
+90.0000
+51
+180.0000
+0
+LINE
+8
+TRIM
+10
+19.5000
+20
+102.0000
+11
+19.5000
+21
+18.0000
+0
+ARC
+8
+TRIM
+10
+21.5000
+20
+18.0000
+40
+2.0000
+50
+180.0000
+51
+270.0000
+0
+LINE
+8
+TRIM
+10
+86.5000
+20
+16.0000
+11
+145.5000
+21
+16.0000
+0
+ARC
+8
+TRIM
+10
+145.5000
+20
+18.0000
+40
+2.0000
+50
+270.0000
+51
+360.0000
+0
+LINE
+8
+TRIM
+10
+147.5000
+20
+18.0000
+11
+147.5000
+21
+102.0000
+0
+ARC
+8
+TRIM
+10
+145.5000
+20
+102.0000
+40
+2.0000
+50
+0.0000
+51
+90.0000
+0
+LINE
+8
+TRIM
+10
+145.5000
+20
+104.0000
+11
+86.5000
+21
+104.0000
+0
+ARC
+8
+TRIM
+10
+86.5000
+20
+102.0000
+40
+2.0000
+50
+90.0000
+51
+180.0000
+0
+LINE
+8
+TRIM
+10
+84.5000
+20
+102.0000
+11
+84.5000
+21
+18.0000
+0
+ARC
+8
+TRIM
+10
+86.5000
+20
+18.0000
+40
+2.0000
+50
+180.0000
+51
+270.0000
+0
+LINE
+8
+TRIM
+10
+151.5000
+20
+16.0000
+11
+210.5000
+21
+16.0000
+0
+ARC
+8
+TRIM
+10
+210.5000
+20
+18.0000
+40
+2.0000
+50
+270.0000
+51
+360.0000
+0
+LINE
+8
+TRIM
+10
+212.5000
+20
+18.0000
+11
+212.5000
+21
+102.0000
+0
+ARC
+8
+TRIM
+10
+210.5000
+20
+102.0000
+40
+2.0000
+50
+0.0000
+51
+90.0000
+0
+LINE
+8
+TRIM
+10
+210.5000
+20
+104.0000
+11
+151.5000
+21
+104.0000
+0
+ARC
+8
+TRIM
+10
+151.5000
+20
+102.0000
+40
+2.0000
+50
+90.0000
+51
+180.0000
+0
+LINE
+8
+TRIM
+10
+149.5000
+20
+102.0000
+11
+149.5000
+21
+18.0000
+0
+ARC
+8
+TRIM
+10
+151.5000
+20
+18.0000
+40
+2.0000
+50
+180.0000
+51
+270.0000
+0
+LINE
+8
+TRIM
+10
+216.5000
+20
+16.0000
+11
+275.5000
+21
+16.0000
+0
+ARC
+8
+TRIM
+10
+275.5000
+20
+18.0000
+40
+2.0000
+50
+270.0000
+51
+360.0000
+0
+LINE
+8
+TRIM
+10
+277.5000
+20
+18.0000
+11
+277.5000
+21
+102.0000
+0
+ARC
+8
+TRIM
+10
+275.5000
+20
+102.0000
+40
+2.0000
+50
+0.0000
+51
+90.0000
+0
+LINE
+8
+TRIM
+10
+275.5000
+20
+104.0000
+11
+216.5000
+21
+104.0000
+0
+ARC
+8
+TRIM
+10
+216.5000
+20
+102.0000
+40
+2.0000
+50
+90.0000
+51
+180.0000
+0
+LINE
+8
+TRIM
+10
+214.5000
+20
+102.0000
+11
+214.5000
+21
+18.0000
+0
+ARC
+8
+TRIM
+10
+216.5000
+20
+18.0000
+40
+2.0000
+50
+180.0000
+51
+270.0000
+0
+LINE
+8
+TRIM
+10
+21.5000
+20
+106.0000
+11
+80.5000
+21
+106.0000
+0
+ARC
+8
+TRIM
+10
+80.5000
+20
+108.0000
+40
+2.0000
+50
+270.0000
+51
+360.0000
+0
+LINE
+8
+TRIM
+10
+82.5000
+20
+108.0000
+11
+82.5000
+21
+192.0000
+0
+ARC
+8
+TRIM
+10
+80.5000
+20
+192.0000
+40
+2.0000
+50
+0.0000
+51
+90.0000
+0
+LINE
+8
+TRIM
+10
+80.5000
+20
+194.0000
+11
+21.5000
+21
+194.0000
+0
+ARC
+8
+TRIM
+10
+21.5000
+20
+192.0000
+40
+2.0000
+50
+90.0000
+51
+180.0000
+0
+LINE
+8
+TRIM
+10
+19.5000
+20
+192.0000
+11
+19.5000
+21
+108.0000
+0
+ARC
+8
+TRIM
+10
+21.5000
+20
+108.0000
+40
+2.0000
+50
+180.0000
+51
+270.0000
+0
+LINE
+8
+TRIM
+10
+86.5000
+20
+106.0000
+11
+145.5000
+21
+106.0000
+0
+ARC
+8
+TRIM
+10
+145.5000
+20
+108.0000
+40
+2.0000
+50
+270.0000
+51
+360.0000
+0
+LINE
+8
+TRIM
+10
+147.5000
+20
+108.0000
+11
+147.5000
+21
+192.0000
+0
+ARC
+8
+TRIM
+10
+145.5000
+20
+192.0000
+40
+2.0000
+50
+0.0000
+51
+90.0000
+0
+LINE
+8
+TRIM
+10
+145.5000
+20
+194.0000
+11
+86.5000
+21
+194.0000
+0
+ARC
+8
+TRIM
+10
+86.5000
+20
+192.0000
+40
+2.0000
+50
+90.0000
+51
+180.0000
+0
+LINE
+8
+TRIM
+10
+84.5000
+20
+192.0000
+11
+84.5000
+21
+108.0000
+0
+ARC
+8
+TRIM
+10
+86.5000
+20
+108.0000
+40
+2.0000
+50
+180.0000
+51
+270.0000
+0
+LINE
+8
+TRIM
+10
+151.5000
+20
+106.0000
+11
+210.5000
+21
+106.0000
+0
+ARC
+8
+TRIM
+10
+210.5000
+20
+108.0000
+40
+2.0000
+50
+270.0000
+51
+360.0000
+0
+LINE
+8
+TRIM
+10
+212.5000
+20
+108.0000
+11
+212.5000
+21
+192.0000
+0
+ARC
+8
+TRIM
+10
+210.5000
+20
+192.0000
+40
+2.0000
+50
+0.0000
+51
+90.0000
+0
+LINE
+8
+TRIM
+10
+210.5000
+20
+194.0000
+11
+151.5000
+21
+194.0000
+0
+ARC
+8
+TRIM
+10
+151.5000
+20
+192.0000
+40
+2.0000
+50
+90.0000
+51
+180.0000
+0
+LINE
+8
+TRIM
+10
+149.5000
+20
+192.0000
+11
+149.5000
+21
+108.0000
+0
+ARC
+8
+TRIM
+10
+151.5000
+20
+108.0000
+40
+2.0000
+50
+180.0000
+51
+270.0000
+0
+LINE
+8
+TRIM
+10
+216.5000
+20
+106.0000
+11
+275.5000
+21
+106.0000
+0
+ARC
+8
+TRIM
+10
+275.5000
+20
+108.0000
+40
+2.0000
+50
+270.0000
+51
+360.0000
+0
+LINE
+8
+TRIM
+10
+277.5000
+20
+108.0000
+11
+277.5000
+21
+192.0000
+0
+ARC
+8
+TRIM
+10
+275.5000
+20
+192.0000
+40
+2.0000
+50
+0.0000
+51
+90.0000
+0
+LINE
+8
+TRIM
+10
+275.5000
+20
+194.0000
+11
+216.5000
+21
+194.0000
+0
+ARC
+8
+TRIM
+10
+216.5000
+20
+192.0000
+40
+2.0000
+50
+90.0000
+51
+180.0000
+0
+LINE
+8
+TRIM
+10
+214.5000
+20
+192.0000
+11
+214.5000
+21
+108.0000
+0
+ARC
+8
+TRIM
+10
+216.5000
+20
+108.0000
+40
+2.0000
+50
+180.0000
+51
+270.0000
+0
+ENDSEC
+0
+EOF`;
+
+function uid(){ return Math.random().toString(36).slice(2,9); }
+function updateStatus(){ statusEl.textContent = uploadedFiles.length ? `${uploadedFiles.length} fichier(s)` : 'Aucun fichier'; }
+
+function getVisibleSlotsCount(){
+  if(pageSizeSel.value === 'a4-portrait') return 3 * 3;
+  return 4 * 2;
+}
+
+function getFirstEmptySlotIndex(){
+  const visibleCount = getVisibleSlotsCount();
+  for(let i=0;i<visibleCount;i++){
+    if(slots[i] === null) return i;
+  }
+  return -1;
+}
+
+function getPageDimensions_mm(){
+  if(pageSizeSel.value === 'a4-portrait') return { width:210, height:297 };
+  return { width:297, height:210 };
+}
+
+/* ======== SPLITTER LOGIC ======== */
+btnSplitUpload.addEventListener('click', () => splitFilePicker.click());
+
+splitFilePicker.addEventListener('change', async (ev) => {
+  const file = ev.target.files[0];
+  if(!file) return;
+  
+  const cols = parseInt(splitColsInput.value) || 1;
+  const rows = parseInt(splitRowsInput.value) || 1;
+  
+  // Reset input
+  splitFilePicker.value = '';
+  
+  btnSplitUpload.textContent = "Découpage en cours...";
+  btnSplitUpload.disabled = true;
+
+  try {
+    const blobs = await sliceImage(file, cols, rows);
+    const filesList = blobs.map((b, i) => {
+      const f = new File([b], `split_${i}.png`, { type: 'image/png' });
+      return f;
+    });
+    addFiles(filesList);
+  } catch(e){
+    console.error(e);
+    alert("Erreur lors du découpage de l'image.");
+  } finally {
+    btnSplitUpload.textContent = "Choisir l'image à découper";
+    btnSplitUpload.disabled = false;
+  }
+});
+
+function sliceImage(file, cols, rows){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const totalW_mm = cols * CARD_W_MM;
+        const totalH_mm = rows * CARD_H_MM;
+        const targetRatio = totalW_mm / totalH_mm;
+        
+        const imgW = img.naturalWidth;
+        const imgH = img.naturalHeight;
+        const imgRatio = imgW / imgH;
+        
+        let cropW, cropH, cropX, cropY;
+        
+        if(imgRatio > targetRatio) {
+          cropH = imgH;
+          cropW = cropH * targetRatio;
+          cropY = 0;
+          cropX = (imgW - cropW) / 2;
+        } else {
+          cropW = imgW;
+          cropH = cropW / targetRatio;
+          cropX = 0;
+          cropY = (imgH - cropH) / 2;
+        }
+        
+        const singleCardW = cropW / cols;
+        const singleCardH = cropH / rows;
+        
+        const blobs = [];
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        const outputCardW = 1000; 
+        const outputCardH = Math.round(outputCardW * (CARD_H_MM / CARD_W_MM));
+        
+        canvas.width = outputCardW;
+        canvas.height = outputCardH;
+        
+        let processed = 0;
+        const total = cols * rows;
+        
+        for(let r=0; r<rows; r++){
+          for(let c=0; c<cols; c++){
+            const sx = cropX + (c * singleCardW);
+            const sy = cropY + (r * singleCardH);
+            
+            ctx.clearRect(0, 0, outputCardW, outputCardH);
+            ctx.drawImage(img, sx, sy, singleCardW, singleCardH, 0, 0, outputCardW, outputCardH);
+            
+            canvas.toBlob((blob) => {
+              blobs.push({ blob, index: (r*cols)+c });
+              processed++;
+              if(processed === total){
+                blobs.sort((a,b) => a.index - b.index);
+                resolve(blobs.map(x => x.blob));
+              }
+            }, 'image/png', 0.95);
+          }
+        }
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+
+/* ======== Context menu display ======== */
+function showContextMenuAt(clientX, clientY){
+  contextMenu.style.display = 'block';
+  contextMenu.setAttribute('aria-hidden','false');
+  contextMenu.style.left = clientX + 'px';
+  contextMenu.style.top = clientY + 'px';
+  requestAnimationFrame(()=> {
+    const rect = contextMenu.getBoundingClientRect();
+    let left = clientX;
+    let top = clientY;
+    const padding = 8;
+    if(rect.right > window.innerWidth - padding){
+      left = Math.max(padding, window.innerWidth - rect.width - padding);
+    }
+    if(rect.bottom > window.innerHeight - padding){
+      top = Math.max(padding, window.innerHeight - rect.height - padding);
+    }
+    contextMenu.style.left = left + 'px';
+    contextMenu.style.top = top + 'px';
+    contextMenu.tabIndex = -1;
+    contextMenu.focus();
+  });
+}
+function hideContextMenu(){
+  contextMenu.style.display = 'none';
+  contextMenu.setAttribute('aria-hidden','true');
+  contextTargetSlot = null;
+}
+document.addEventListener('click', (ev)=>{ if(!contextMenu.contains(ev.target)) hideContextMenu(); });
+document.addEventListener('keydown', (ev)=>{ if(ev.key==='Escape') hideContextMenu(); });
+
+/* ======== Preview rendering ======== */
+function showProgress(total, dpiDisplay){
+  progressWrap.style.display = 'block';
+  progressWrap.setAttribute('aria-hidden','false');
+  progressText.textContent = `0 / ${total} images — DPI: ${dpiDisplay || '--'}`;
+  progressBar.style.width = '0%';
+}
+function updateProgress(current, total, dpiDisplay){
+  progressText.textContent = `${current} / ${total} images — DPI: ${dpiDisplay || '--'}`;
+  const pct = total > 0 ? Math.round((current/total)*100) : 0;
+  progressBar.style.width = `${pct}%`;
+}
+function hideProgress(){
+  setTimeout(()=>{ progressWrap.style.display = 'none'; progressWrap.setAttribute('aria-hidden','true'); progressText.textContent=''; progressBar.style.width='0%'; }, 300);
+}
+
+function renderPreview(){
+  const pageMm = getPageDimensions_mm();
+  const wrapRect = pagePreviewWrap.getBoundingClientRect();
+  const maxW = Math.max(320, wrapRect.width - 40);
+  const maxH = Math.max(420, wrapRect.height - 40);
+  const dpiScreen = 96;
+  const mmToPx = mm => mm * (dpiScreen / 25.4);
+  let pagePxW = mmToPx(pageMm.width);
+  let pagePxH = mmToPx(pageMm.height);
+  const scale = Math.min(maxW / pagePxW, maxH / pagePxH, 1);
+  pagePxW = Math.round(pagePxW * scale);
+  pagePxH = Math.round(pagePxH * scale);
+
+  let cols, rows;
+  if(pageSizeSel.value === 'a4-portrait'){ cols = 3; rows = 3; }
+  else { cols = 4; rows = 2; }
+
+  const visibleSlots = cols * rows;
+  const slotW = Math.floor(pagePxW / cols);
+  const slotH = Math.floor(pagePxH / rows);
+
+  pagePreview.style.width = pagePxW + 'px';
+  pagePreview.style.height = pagePxH + 'px';
+  pagePreview.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+  pagePreview.style.gridTemplateRows = `repeat(${rows}, ${slotH}px)`;
+  pagePreview.style.gap = '0px';
+  pagePreview.innerHTML = '';
+
+
+  for(let i=0;i<visibleSlots;i++){
+    const slot = document.createElement('div');
+    slot.className = 'slot';
+    slot.dataset.slot = i;
+    slot.style.minWidth = slotW + 'px';
+    slot.style.minHeight = slotH + 'px';
+    slot.draggable = true;
+
+    slot.addEventListener('dragstart', (ev) => {
+      ev.dataTransfer.setData('text/plain', i.toString());
+      slot.classList.add('dragging');
+    });
+    slot.addEventListener('dragend', () => { slot.classList.remove('dragging'); });
+    slot.addEventListener('dragover', (ev)=>{ ev.preventDefault(); slot.style.outline='2px solid rgba(0,123,255,0.6)'; });
+    slot.addEventListener('dragleave', ()=>{ slot.style.outline='none'; });
+    slot.addEventListener('drop', (ev)=>{ ev.preventDefault(); slot.style.outline='none'; const from = parseInt(ev.dataTransfer.getData('text/plain')); handleSwapSlots(from, i); });
+    
+    // Ajout du gestionnaire de clic directement ici pour les slots VIDES, 
+    // car ils n'ont plus le `plusTile` en tant que seule source de clic.
+    // Mais on ajoute le `plusTile` à l'intérieur s'il est vide.
+    slot.addEventListener('click', (ev) => {
+      hideContextMenu();
+      const entryId = slots[i];
+      if(!entryId){ 
+        // Si le slot est vide, on appelle le sélecteur de fichiers
+        filePicker.click();
+        return;
+      } 
+      
+      // Si le slot contient une carte (entryId existe)
+      if(ev.altKey){
+        removeEntry(entryId);
+      } else {
+        duplicateEntry(entryId);
+      }
+    });
+
+    slot.addEventListener('contextmenu', (ev) => {
+      ev.preventDefault();
+      const entryId = slots[i];
+      if(!entryId){ hideContextMenu(); return; }
+      contextTargetSlot = i;
+      showContextMenuAt(ev.clientX, ev.clientY);
+    });
+
+    const entryId = slots[i];
+    if(entryId){
+      const entry = uploadedFiles.find(e => e.id === entryId);
+      if(entry){
+        const img = document.createElement('img');
+        img.src = entry.url;
+        img.alt = 'carte ' + entry.id;
+        slot.appendChild(img);
+
+        const rem = document.createElement('div');
+        rem.className = 'thumbRemove';
+        rem.textContent = '✖';
+        rem.title = 'Supprimer';
+        rem.addEventListener('click', (ev) => { ev.stopPropagation(); removeEntry(entry.id); });
+        slot.appendChild(rem);
+
+        const move = document.createElement('div');
+        move.className = 'thumbMove';
+        move.title = 'Déplacer';
+        move.innerHTML = `\n          <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">\n            <line x1="22" y1="24" x2="26" y2="24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>\n            <line x1="24" y1="22" x2="24" y2="26" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>\n            <line x1="24" y1="16" x2="24" y2="8" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>\n            <path d="M20 12 L24 8 L28 12" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>\n            <line x1="24" y1="32" x2="24" y2="40" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>\n            <path d="M20 36 L24 40 L28 36" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>\n            <line x1="16" y1="24" x2="8" y2="24" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>\n            <path d="M12 20 L8 24 L12 28" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>\n            <line x1="32" y1="24" x2="40" y2="24" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>\n            <path d="M36 20 L40 24 L36 28" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>\n            <path d="M24 11 L30 17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none" opacity="0.85"/>\n            <path d="M24 11 L18 17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none" opacity="0.85"/>\n            <path d="M24 37 L30 31" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none" opacity="0.85"/>\n            <path d="M24 37 L18 31" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none" opacity="0.85"/>\n          </svg>\n          <div class="label">Déplacer</div>\n        `;
+        move.addEventListener('mousedown', (ev)=>{ slot.dispatchEvent(new MouseEvent('mousedown', {bubbles:true})); });
+        slot.appendChild(move);
+
+        const idxEl = document.createElement('div');
+        idxEl.className = 'thumbIndex';
+        idxEl.textContent = (i+1);
+        slot.appendChild(idxEl);
+      } else {
+        slots[i] = null;
+      }
+    } else {
+      // LOGIQUE CORRIGÉE: Afficher le 'plusTile' dans TOUS les slots vides
+      const plus = document.createElement('div');
+      plus.className = 'plusTile';
+      plus.innerHTML = '<span>＋</span><div style="font-size:12px;color:#777;margin-top:6px;">Ajouter carte(s)</div>';
+      // Le gestionnaire de clic est maintenant sur le slot, plus besoin de le mettre sur le 'plus'
+      slot.appendChild(plus);
+    }
+    pagePreview.appendChild(slot);
+  }
+
+  updateStatus();
+  const hasAny = uploadedFiles.length > 0;
+  downloadBtn.disabled = !hasAny;
+  downloadDxfBtn.disabled = !hasAny; 
+}
+
+/* ======== file picker handling ======== */
+btnAddSingle.addEventListener('click', () => filePicker.click());
+
+filePicker.addEventListener('change', (ev) => {
+  const files = Array.from(ev.target.files || []);
+  if(files.length) addFiles(files);
+  filePicker.value = '';
+});
+
+function addFiles(filesList){
+  for(const f of filesList){
+    const id = uid();
+    const url = URL.createObjectURL(f);
+    uploadedFiles.push({ id, file: f, url });
+  }
+  let next = getFirstEmptySlotIndex();
+  for(let i = uploadedFiles.length - filesList.length; i < uploadedFiles.length && next !== -1; i++){
+    const entry = uploadedFiles[i];
+    slots[next] = entry.id;
+    next = getFirstEmptySlotIndex();
+  }
+  normalizeUploadedFilesOrderFromSlots();
+  renderPreview();
+  updateEstimateUI();
+}
+
+function normalizeUploadedFilesOrderFromSlots(){
+  const inSlots = slots.filter(id => id !== null);
+  const remaining = uploadedFiles.filter(e => !inSlots.includes(e.id)).map(e => e.id);
+  const newOrder = inSlots.concat(remaining);
+  const next = [];
+  newOrder.forEach(id => { const found = uploadedFiles.find(e=>e.id===id); if(found) next.push(found); });
+  uploadedFiles = next.slice();
+}
+
+function removeEntry(id){
+  const idx = uploadedFiles.findIndex(e => e.id === id);
+  if(idx !== -1){
+    try{ URL.revokeObjectURL(uploadedFiles[idx].url); } catch(_) {}
+    uploadedFiles.splice(idx,1);
+  }
+  for(let i=0;i<slots.length;i++) if(slots[i]===id) slots[i]=null;
+  const remaining = uploadedFiles.map(e=>e.id);
+  slots = new Array(MAX_SLOTS).fill(null);
+  for(let i=0;i<remaining.length && i<MAX_SLOTS;i++) slots[i]=remaining[i];
+  renderPreview();
+  updateEstimateUI();
+}
+
+function duplicateEntry(id){
+  const entry = uploadedFiles.find(e=>e.id===id);
+  if(!entry) return;
+  const emptyIdx = getFirstEmptySlotIndex();
+  if(emptyIdx === -1){
+    alert('Aucune case libre pour dupliquer (max affichées selon format).');
+    return;
+  }
+  const newId = uid();
+  const newUrl = URL.createObjectURL(entry.file);
+  uploadedFiles.push({ id: newId, file: entry.file, url: newUrl });
+  slots[emptyIdx] = newId;
+  normalizeUploadedFilesOrderFromSlots();
+  renderPreview();
+  updateEstimateUI();
+}
+
+function handleSwapSlots(fromIdx, toIdx){
+  const tmp = slots[fromIdx];
+  slots[fromIdx] = slots[toIdx];
+  slots[toIdx] = tmp;
+  normalizeUploadedFilesOrderFromSlots();
+  renderPreview();
+  updateEstimateUI();
+}
+
+clearAllBtn.addEventListener('click', () => {
+  uploadedFiles.forEach(e=>{ try{ URL.revokeObjectURL(e.url); } catch(_){} });
+  uploadedFiles = []; slots = new Array(MAX_SLOTS).fill(null);
+  renderPreview();
+  updateEstimateUI();
+});
+
+pageSizeSel.addEventListener('change', ()=>{ renderPreview(); updateEstimateUI(); });
+dpiSelect.addEventListener('change', ()=>{ updateEstimateUI(); });
+bleedInput.addEventListener('input', ()=>{ updateEstimateUI(); });
+crossColorInput.addEventListener('input', (e)=>{ crossColorHex = e.target.value || '#000000'; });
+showCutMarksInput.addEventListener('change', (e) => { crossColorInput.disabled = !e.target.checked; });
+
+/* ======== context menu buttons behaviour ======== */
+ctxDupBtn.addEventListener('click', ()=> {
+  if(contextTargetSlot===null) return hideContextMenu();
+  const id = slots[contextTargetSlot];
+  if(id) duplicateEntry(id);
+  hideContextMenu();
+});
+ctxDelBtn.addEventListener('click', ()=> {
+  if(contextTargetSlot===null) return hideContextMenu();
+  const id = slots[contextTargetSlot];
+  if(id) removeEntry(id);
+  hideContextMenu();
+});
+
+/* ======== Utility: read natural dimensions of a File image ======== */
+function getImageDimensions(file){
+  return new Promise((resolve)=>{
+    const reader = new FileReader();
+    reader.onload = (e)=>{
+      const img = new Image();
+      img.onload = ()=> resolve({ width: img.naturalWidth || img.width, height: img.naturalHeight || img.height });
+      img.onerror = ()=> resolve({ width: null, height: null });
+      img.src = e.target.result;
+    };
+    reader.onerror = ()=> resolve({ width: null, height: null });
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ======== estimation de taille PDF ======== */
+async function estimatePdfSize(filesEntries, dpiOption){
+  if(!filesEntries || filesEntries.length === 0) return { mb: 0, dpiUsed: null, capped:false };
+  const bleedMm = parseFloat(bleedInput.value) || 1;
+  let chosenDpi;
+  if(dpiOption === 'max'){
+    const dimsList = await Promise.all(filesEntries.map(fe => getImageDimensions(fe.file)));
+    const mmPerInch = 25.4;
+    const cardWInch = CARD_W_MM / mmPerInch;
+    const cardHInch = CARD_H_MM / mmPerInch;
+    const perImageDpi = dimsList.map(d => {
+      if(!d || !d.width || !d.height) return null;
+      const dpiX = d.width / cardWInch;
+      const dpiY = d.height / cardHInch;
+      return Math.min(dpiX, dpiY);
+    }).filter(x => x && isFinite(x) && x > 0);
+
+    const minDpiBound = 150;
+    const maxDpiBound = 1800;
+    if(perImageDpi.length === 0){ chosenDpi = 600; } 
+    else { chosenDpi = Math.max(minDpiBound, Math.min(maxDpiBound, Math.floor(Math.min(...perImageDpi)))); }
+  } else {
+    chosenDpi = parseInt(dpiOption, 10) || 600;
+  }
+
+  let cols, rows;
+  if(pageSizeSel.value === 'a4-portrait'){ cols = 3; rows = 3; } else { cols = 4; rows = 2; }
+  const page = getPageDimensions_mm();
+  if(page.width > page.height){ cols = 4; rows = 2; } else { cols = 3; rows = 3; }
+
+  const mmToPxAt = (mm, dpi) => (mm/25.4) * dpi;
+  const finalCardW_px = Math.round(mmToPxAt(CARD_W_MM, chosenDpi)) + 2*Math.max(1, Math.round(mmToPxAt(bleedMm, chosenDpi)));
+  const finalCardH_px = Math.round(mmToPxAt(CARD_H_MM, chosenDpi)) + 2*Math.max(1, Math.round(mmToPxAt(bleedMm, chosenDpi)));
+
+  const MAX_CANVAS_PX = 8192;
+  let dpiCapped = false;
+  let chosenDpiFinal = chosenDpi;
+  if(Math.max(finalCardW_px, finalCardH_px) > MAX_CANVAS_PX){
+    const scale = MAX_CANVAS_PX / Math.max(finalCardW_px, finalCardH_px);
+    chosenDpiFinal = Math.max(72, Math.floor(chosenDpi * scale));
+  }
+  if(chosenDpiFinal !== chosenDpi) dpiCapped = true;
+  
+  // Recalc
+  const finalCardW_px2 = Math.round(mmToPxAt(CARD_W_MM, chosenDpiFinal)) + 2 * Math.max(1, Math.round(mmToPxAt(bleedMm, chosenDpiFinal)));
+  const finalCardH_px2 = Math.round(mmToPxAt(CARD_H_MM, chosenDpiFinal)) + 2 * Math.max(1, Math.round(mmToPxAt(bleedMm, chosenDpiFinal)));
+
+  const imagesCount = filesEntries.length;
+  const uncompressedBytes = finalCardW_px2 * finalCardH_px2 * 4 * imagesCount;
+  const pngEstimateBytes = uncompressedBytes * 0.6;
+  const colsRows = cols * rows;
+  const pages = Math.max(1, Math.ceil(imagesCount / colsRows));
+  const pdfOverhead = pages * 8192;
+  const totalBytes = pngEstimateBytes + pdfOverhead;
+  const mb = totalBytes / (1024*1024);
+  return { mb, dpiUsed: chosenDpiFinal, capped: dpiCapped, pages };
+}
+
+async function updateEstimateUI(){
+  if(!uploadedFiles.length){ estimateText.textContent = '—'; return; }
+  estimateText.textContent = 'Calcul…';
+  try {
+    const res = await estimatePdfSize(uploadedFiles, dpiSelect.value);
+    const mb = Math.max(0.01, res.mb || 0);
+    const dpiStr = res.dpiUsed ? `${Math.round(res.dpiUsed)}${res.capped ? ' (capé)' : ''}` : '--';
+    estimateText.textContent = `${mb.toFixed(1)} Mo env. — ${res.pages} page(s) — DPI: ${dpiStr}`;
+  } catch(e){
+    estimateText.textContent = 'Erreur estimation';
+  }
+}
+
+/* ======== PDF generation (final) ======== */
+async function buildPdfBlob(filesEntries, dpiOption){
+  if(!jsPDF) throw new Error('jsPDF non initialisé');
+  const bleedMm = parseFloat(bleedInput.value) || 1;
+
+  let chosenDpi;
+  if(dpiOption === 'max'){
+    const dimsList = await Promise.all(filesEntries.map(fe => getImageDimensions(fe.file)));
+    const mmPerInch = 25.4;
+    const cardWInch = CARD_W_MM / mmPerInch;
+    const cardHInch = CARD_H_MM / mmPerInch;
+    const perImageDpi = dimsList.map(d => {
+      if(!d || !d.width || !d.height) return null;
+      return Math.min(d.width / cardWInch, d.height / cardHInch);
+    }).filter(x => x && isFinite(x) && x > 0);
+    if(perImageDpi.length === 0) chosenDpi = 600;
+    else chosenDpi = Math.max(150, Math.min(1800, Math.floor(Math.min(...perImageDpi))));
+  } else {
+    chosenDpi = parseInt(dpiOption, 10) || 600;
+  }
+
+  let cols, rows;
+  if(pageSizeSel.value === 'a4-portrait'){ cols = 3; rows = 3; } else { cols = 4; rows = 2; }
+  const page = getPageDimensions_mm();
+  if(page.width > page.height){ cols = 4; rows = 2; } else { cols = 3; rows = 3; }
+
+  const mmToPxAt = (mm, dpi) => (mm/25.4) * dpi;
+  const CARD_W_MM_CONST = CARD_W_MM, CARD_H_MM_CONST = CARD_H_MM;
+  let cardW_px = Math.round(mmToPxAt(CARD_W_MM_CONST, chosenDpi));
+  let cardH_px = Math.round(mmToPxAt(CARD_H_MM_CONST, chosenDpi));
+  let bleed_px = Math.max(1, Math.round(mmToPxAt(bleedMm, chosenDpi)));
+  let finalCardW_px = cardW_px + 2*bleed_px;
+  let finalCardH_px = cardH_px + 2*bleed_px;
+
+  const MAX_CANVAS_PX = 8192;
+  let dpiCapped = false;
+  const maxDim = Math.max(finalCardW_px, finalCardH_px);
+  if(maxDim > MAX_CANVAS_PX){
+    const scale = MAX_CANVAS_PX / maxDim;
+    chosenDpi = Math.max(72, Math.floor(chosenDpi * scale));
+    cardW_px = Math.round(mmToPxAt(CARD_W_MM_CONST, chosenDpi));
+    cardH_px = Math.round(mmToPxAt(CARD_H_MM_CONST, chosenDpi));
+    bleed_px = Math.max(1, Math.round(mmToPxAt(bleedMm, chosenDpi)));
+    finalCardW_px = cardW_px + 2*bleed_px;
+    finalCardH_px = cardH_px + 2*bleed_px;
+    dpiCapped = true;
+  }
+
+  showProgress(filesEntries.length, chosenDpi + (dpiCapped ? ' (capé)' : ''));
+
+  const slotW_mm = CARD_W_MM_CONST + 2*bleedMm;
+  const slotH_mm = CARD_H_MM_CONST + 2*bleedMm;
+  const cardsPerPage = Math.max(1, cols * rows);
+  const PAGE_W_MM = page.width, PAGE_H_MM = page.height;
+  const marginX_mm = (PAGE_W_MM - cols*slotW_mm)/2;
+  const marginY_mm = (PAGE_H_MM - rows*slotH_mm)/2;
+
+  const canvases = [];
+  for(let i=0;i<filesEntries.length;i++){
+    const entry = filesEntries[i];
+    const c = await createCardWithBleed(entry.file, finalCardW_px, finalCardH_px, cardW_px, cardH_px, bleed_px);
+    canvases.push(c);
+    updateProgress(i+1, filesEntries.length, chosenDpi + (dpiCapped ? ' (capé)' : ''));
+    await new Promise(r=>setTimeout(r, 10));
+  }
+
+  const orientation = PAGE_W_MM > PAGE_H_MM ? 'landscape' : 'portrait';
+  const pdf = new jsPDF({ orientation: orientation, unit: 'mm', format: [PAGE_W_MM, PAGE_H_MM] });
+  
+  const numPages = Math.ceil(canvases.length / cardsPerPage);
+  const addCameoMarks = showCameoMarksInput.checked;
+
+  for(let p=0;p<numPages;p++){
+    if(p>0) pdf.addPage([PAGE_W_MM, PAGE_H_MM], orientation);
+    
+    const startIndex = p*cardsPerPage;
+    const endIndex = Math.min(startIndex + cardsPerPage, canvases.length);
+    for(let i=startIndex;i<endIndex;i++){
+      const cardCanvas = canvases[i];
+      const indexOnPage = i % cardsPerPage;
+      const r = Math.floor(indexOnPage / cols);
+      const c = indexOnPage % cols;
+      const x_mm = marginX_mm + c * slotW_mm;
+      const y_mm = marginY_mm + r * slotH_mm;
+      pdf.addImage(cardCanvas.toDataURL('image/png'), 'PNG', x_mm, y_mm, slotW_mm, slotH_mm);
+    }
+    
+    const markMode = showCutMarksInput.checked ? 'cross' : 'none';
+    drawPdfCutMarks(pdf, marginX_mm, marginY_mm, rows, cols, CARD_W_MM_CONST, CARD_H_MM_CONST, bleedMm, markMode, PAGE_W_MM, PAGE_H_MM);
+
+    if(addCameoMarks){
+      drawCameoMarks(pdf, PAGE_W_MM, PAGE_H_MM);
+    }
+  }
+
+  hideProgress();
+  return pdf.output('blob');
+}
+
+
+/* ======== Helpers createCardWithBleed (NO PATCH) ======== */
+function avgColorFromCtx(ctx, sx, sy, sw, sh) {
+  try {
+    const data = ctx.getImageData(sx, sy, Math.max(1,sw), Math.max(1,sh)).data;
+    let r=0,g=0,b=0,a=0,cnt=0;
+    for(let i=0;i<data.length;i+=4){
+      const alpha = data[i+3]/255;
+      if(alpha === 0) continue;
+      r += data[i]; g += data[i+1]; b += data[i+2]; a += alpha; cnt++;
+    }
+    if(cnt===0){
+      const d = ctx.getImageData(Math.max(0,sx), Math.max(0,sy), 1, 1).data;
+      return { r:d[0], g:d[1], b:d[2], a:d[3]/255 };
+    }
+    return { r: Math.round(r/cnt), g: Math.round(g/cnt), b: Math.round(b/cnt), a: a/cnt };
+  } catch(e){
+    return { r:200, g:200, b:200, a:1 };
+  }
+}
+
+function createCardWithBleed(file, finalW, finalH, cardW, cardH, bleed){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=e=>{
+      const img=new Image();
+      img.onload=()=>{
+        const src=document.createElement('canvas');
+        src.width=cardW; src.height=cardH;
+        const sctx = src.getContext('2d');
+        sctx.clearRect(0,0,cardW,cardH);
+        try { sctx.drawImage(img,0,0,img.naturalWidth,img.naturalHeight,0,0,cardW,cardH); } catch(ex){ sctx.drawImage(img,0,0); }
+
+        const c=document.createElement('canvas');
+        c.width=finalW; c.height=finalH;
+        const ctx=c.getContext('2d');
+        ctx.clearRect(0,0,finalW,finalH);
+
+        let sampleAvg = avgColorFromCtx(sctx, 0, 0, Math.max(1,cardW), Math.max(1,cardH));
+        if(sampleAvg && sampleAvg.a < 1){
+          ctx.fillStyle = `rgba(${sampleAvg.r},${sampleAvg.g},${sampleAvg.b},${Math.max(0.95,sampleAvg.a)})`;
+          ctx.fillRect(0,0,finalW,finalH);
+        }
+
+        const scale = Math.max(finalW / cardW, finalH / cardH);
+        const destW = Math.round(cardW * scale);
+        const destH = Math.round(cardH * scale);
+        const dx = Math.round((finalW - destW) / 2);
+        const dy = Math.round((finalH - destH) / 2);
+        try { ctx.drawImage(src, 0, 0, cardW, cardH, dx, dy, destW, destH); } 
+        catch(e){ ctx.fillStyle = `rgba(${sampleAvg.r},${sampleAvg.g},${sampleAvg.b},${sampleAvg.a})`; ctx.fillRect(0,0,finalW,finalH); }
+
+        try {
+          const destW2 = destW; const destH2 = destH;
+          const dxTR = Math.round(finalW - destW2); const dyTR = Math.round((finalH - destH2) / 2);
+          ctx.globalAlpha = 1.0; ctx.drawImage(src, 0, 0, cardW, cardH, dxTR, dyTR, destW2, destH2);
+          const dxTL = Math.round((finalW - destW2) / 2); const dyTL = Math.round(0);
+          ctx.drawImage(src, 0, 0, cardW, cardH, dxTL, dyTL, destW2, destH2);
+        } catch(e){}
+
+        const maxStrip = Math.min( Math.max(2, Math.floor(bleed)), Math.max(4, Math.round(Math.min(cardW, cardH) * 0.05)) );
+        try {
+          for(let s=1; s<=maxStrip; s++){
+            ctx.drawImage(src, 0, 0, cardW, 1, bleed, bleed - s, cardW, s);
+            ctx.drawImage(src, 0, cardH-1, cardW, 1, bleed, bleed+cardH, cardW, s);
+            ctx.drawImage(src, 0, 0, 1, cardH, bleed - s, bleed, s, cardH);
+            ctx.drawImage(src, cardW-1, 0, 1, cardH, bleed+cardW, bleed, s, cardH);
+          }
+        } catch(e){}
+
+        try {
+          ctx.fillStyle = `rgba(${sampleAvg.r},${sampleAvg.g},${sampleAvg.b},${Math.max(0.95, sampleAvg.a)})`;
+          ctx.fillRect(0,0,Math.min(bleed+4, finalW), Math.min(bleed+4, finalH));
+          ctx.fillRect(finalW - Math.min(bleed+4, finalW), 0, Math.min(bleed+4, finalW), Math.min(bleed+4, finalH));
+          ctx.fillRect(0, finalH - Math.min(bleed+4, finalH), Math.min(bleed+4, finalW), Math.min(bleed+4, finalH));
+          ctx.fillRect(finalW - Math.min(bleed+4, finalW), finalH - Math.min(bleed+4, finalH), Math.min(bleed+4, finalW), Math.min(bleed+4, finalH));
+        } catch(e){}
+
+        try { ctx.drawImage(src, 0, 0, cardW, cardH, bleed, bleed, cardW, cardH); } catch(e){ ctx.drawImage(src, 0, 0); }
+        resolve(c);
+      };
+      img.onerror = () => reject(new Error('Erreur chargement image'));
+      img.src = e.target.result;
+    };
+    reader.onerror = () => reject(new Error('Erreur lecture fichier'));
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ======== drawPdfCutMarks ======== */
+function drawPdfCutMarks(pdf, mx, my, rows, cols, cardW, cardH, bleedMm, mode, pageW, pageH){
+  if(mode === 'none') return;
+
+  const crossHalfLen = 1.5; const dashLen = 0.2; const dashGap = 0.5;
+  const outerGap = 1.0; const solidLineWidth = 0.35; const dashLineWidth = 0.25;
+
+  function drawDashedLine(x1,y1,x2,y2, dash, gap){
+    const dx = x2 - x1; const dy = y2 - y1; const len = Math.hypot(dx, dy);
+    if(len <= 0.0001) return;
+    const vx = dx / len; const vy = dy / len;
+    let pos = 0; let draw = true;
+    while(pos < len - 0.0001){
+      const seg = draw ? dash : gap; const segEnd = Math.min(len, pos + seg);
+      if(draw && segEnd > pos){ pdf.line(x1 + vx * pos, y1 + vy * pos, x1 + vx * segEnd, y1 + vy * segEnd); }
+      pos += seg; draw = !draw;
+    }
+  }
+
+  const slotW = cardW + 2*bleedMm; const slotH = cardH + 2*bleedMm;
+  const corners = [];
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      const baseX = mx + c * slotW; const baseY = my + r * slotH;
+      const left = baseX + bleedMm; const top = baseY + bleedMm;
+      corners.push([left, top]); corners.push([left+cardW, top]);
+      corners.push([left, top+cardH]); corners.push([left+cardW, top+cardH]);
+    }
+  }
+
+  function hexToRgb(hex){
+    if(!hex) return [0,0,0];
+    const h = hex.replace('#','');
+    return h.length === 3 ? [parseInt(h[0]+h[0],16), parseInt(h[1]+h[1],16), parseInt(h[2]+h[2],16)] : [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
+  }
+  pdf.setDrawColor(...hexToRgb(crossColorHex || '#000000'));
+  pdf.setLineWidth(dashLineWidth);
+  corners.forEach(([x,y])=>{
+    drawDashedLine(x - crossHalfLen, y, x + crossHalfLen, y, dashLen, dashGap);
+    drawDashedLine(x, y - crossHalfLen, x, y + crossHalfLen, dashLen, dashGap);
+  });
+
+  const gridLeft = mx; const gridTop = my;
+  const gridRight = mx + cols * slotW; const gridBottom = my + rows * slotH;
+  const vSet = new Set(); const hSet = new Set();
+  for(let c=0;c<cols;c++){ vSet.add(mx + c * slotW + bleedMm); vSet.add(mx + c * slotW + bleedMm + cardW); }
+  for(let r=0;r<rows;r++){ hSet.add(my + r * slotH + bleedMm); hSet.add(my + r * slotH + bleedMm + cardH); }
+  
+  pdf.setDrawColor(0); pdf.setLineWidth(solidLineWidth);
+  Array.from(vSet).sort((a,b)=>a-b).forEach(x => {
+    if(gridTop - outerGap > 0) pdf.line(x, 0, x, gridTop - outerGap);
+    if(gridBottom + outerGap < pageH) pdf.line(x, gridBottom + outerGap, x, pageH);
+  });
+  Array.from(hSet).sort((a,b)=>a-b).forEach(y => {
+    if(gridLeft - outerGap > 0) pdf.line(0, y, gridLeft - outerGap, y);
+    if(gridRight + outerGap < pageW) pdf.line(gridRight + outerGap, y, pageW, y);
+  });
+}
+
+/* ======== Draw Cameo Marks ======== */
+function drawCameoMarks(pdf, pageW, pageH){
+  const margin = 10; 
+  const squareSize = 5; 
+  const lineLength = 20; 
+  const lineThick = 0.5; 
+
+  pdf.setFillColor(0,0,0);
+  pdf.setDrawColor(0,0,0);
+  
+  // 1. Top Left: Filled Square
+  pdf.rect(margin, margin, squareSize, squareSize, 'F');
+  
+  // 2. Top Right: Inverted L
+  pdf.rect(pageW - margin - lineThick, margin, lineThick, lineLength, 'F');
+  pdf.rect(pageW - margin - lineLength, margin, lineLength, lineThick, 'F');
+  
+  // 3. Bottom Left: L
+  pdf.rect(margin, pageH - margin - lineLength, lineThick, lineLength, 'F');
+  pdf.rect(margin, pageH - margin - lineThick, lineLength, lineThick, 'F');
+}
+
+downloadBtn.addEventListener('click', async () => {
+  if(!uploadedFiles.length) return;
+  try{
+    normalizeUploadedFilesOrderFromSlots();
+    downloadBtn.disabled = true; downloadBtn.textContent = 'Génération...';
+    
+    let outName = fileNameInput.value.trim() || 'cartes_puzzle';
+    if(!outName.toLowerCase().endsWith('.pdf')) outName += '.pdf';
+
+    const blob = await buildPdfBlob(uploadedFiles, dpiSelect.value);
+    const url = URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href = url; 
+    a.download = outName; 
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch(err){ console.error(err); alert('Erreur génération PDF'); } 
+  finally { downloadBtn.disabled = false; downloadBtn.textContent = 'Télécharger le PDF'; }
+});
+
+/* ======== STATIC DXF DOWNLOAD HANDLER ======== */
+downloadDxfBtn.addEventListener('click', () => {
+    if(!uploadedFiles.length) return;
+    try {
+        const blob = new Blob([STATIC_DXF_CONTENT], {type: 'application/dxf'});
+        const url = URL.createObjectURL(blob);
+        
+        let outName = fileNameInput.value.trim() || 'cartes_puzzle';
+        outName += '_gabarit_decoupe_8cartes.dxf';
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = outName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch(e){
+        console.error(e);
+        alert('Erreur lors de la génération du fichier DXF');
+    }
+});
+
+renderPreview(); updateStatus(); updateEstimateUI();
+</script>
+</body>
+</html>
